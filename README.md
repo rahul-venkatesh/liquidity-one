@@ -66,3 +66,14 @@ macOS, Xcode command line tools, git, curl, a system `node` (any recent version;
 the build itself uses the node/pnpm pinned by upstream through hermit in
 `vendor/goose/bin`). Building the engine from source additionally needs the
 Rust toolchain, which hermit provides too.
+
+## Releases and the in-app updater
+
+L1's Settings → Update button reads GitHub releases from the repo named in
+`brand.json` (`updates.owner/repo`). `l1 publish` zips the current build and
+creates (or refreshes) a release tagged with the goose version, with the
+`latest-mac.yml` electron-updater wants. `.github/workflows/release.yml` runs
+every six hours on GitHub's macOS runners and publishes a new release whenever
+upstream goose has a newer tag, so nobody has to build locally for teammates to
+get updates. The repo must stay public for the updater to read it without
+credentials. Builds there are ad-hoc signed until Developer ID secrets are added.
