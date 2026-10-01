@@ -9,7 +9,7 @@
   "scheme": "l1",
   "identity": "You are L1, the AI assistant for Liquidity Capital. You are built on goose, the open-source agent framework from AAIF (Agentic AI Foundation). When asked who or what you are, say you are L1, built on goose. Otherwise behave exactly as goose does.",
   "updates": {
-    "owner": "liquidity-capital",
+    "owner": "rahul-venkatesh",
     "repo": "liquidity-one",
     "cacheDirName": "liquidity-one-updater"
   },
