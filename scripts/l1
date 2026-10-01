@@ -1,0 +1,321 @@
+#!/usr/bin/env bash
+#
+# l1 — build L1 (Liquidity One) as upstream goose plus a branding layer.
+#
+#   l1 status                 what is checked out, what upstream has, what is installed
+#   l1 update [TAG] [opts]    sync → apply → engine → build → verify → install
+#   l1 sync [TAG]             check out upstream goose at TAG (default: latest release)
+#   l1 apply                  reset vendor to pristine, then overlay + substitutions + patches
+#   l1 engine [release|source] put the goose backend binary in place
+#   l1 build                  build the desktop app (forge) into out/
+#   l1 verify                 sanity-check the built app
+#   l1 install                replace /Applications/<Product>.app with the build
+#   l1 open                   launch the installed app
+#   l1 publish                zip the build and publish it as a GitHub release (needs gh auth)
+#
+# Options for update: --no-install   --engine release|source
+#
+# The vendor checkout is disposable: never edit it by hand. Everything L1-specific
+# lives in brand.json, overlay/, patches/ and scripts/.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENDOR="$ROOT/vendor/goose"
+CACHE="$ROOT/cache"
+OUT="$ROOT/out"
+BRAND_JSON="$ROOT/brand.json"
+NODE_SYS="$(command -v node || true)"
+
+say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+
+brand() { "$NODE_SYS" -p "require('$BRAND_JSON')$1"; }
+PRODUCT="$(brand .product)"
+BUNDLE_ID="$(brand .bundleId)"
+UPSTREAM_GIT="$(brand .engine.gitUrl)"
+RELEASE_REPO="$(brand .engine.releaseRepo)"
+ENGINE_DEFAULT="$(brand .engine.source)"
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64)  ARCH=arm64; TRIPLE=aarch64-apple-darwin ;;
+  x86_64) ARCH=x64;   TRIPLE=x86_64-apple-darwin ;;
+  *) die "unsupported arch $ARCH" ;;
+esac
+APP="$OUT/${PRODUCT}-darwin-${ARCH}/${PRODUCT}.app"
+INSTALLED="/Applications/${PRODUCT}.app"
+
+use_vendor_tools() {
+  # hermit stubs in vendor/goose/bin pin node/pnpm/cargo to what upstream builds with.
+  [ -d "$VENDOR/bin" ] || die "vendor checkout missing; run: l1 sync"
+  export PATH="$VENDOR/bin:$PATH"
+}
+
+vendor_tag() { git -C "$VENDOR" describe --tags --exact-match 2>/dev/null || git -C "$VENDOR" rev-parse --short HEAD; }
+vendor_version() { "$NODE_SYS" -p "require('$VENDOR/ui/desktop/package.json').version"; }
+latest_release_tag() {
+  git ls-remote --tags --refs "$UPSTREAM_GIT" 'refs/tags/v*' 2>/dev/null \
+    | sed 's#.*/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+}
+
+# ---------------------------------------------------------------- sync
+cmd_sync() {
+  local tag="${1:-}"
+  if [ -z "$tag" ]; then
+    say "Looking up the latest goose release"
+    tag="$(latest_release_tag)"; [ -n "$tag" ] || die "could not determine latest release tag"
+  fi
+  if [ ! -d "$VENDOR/.git" ]; then
+    say "Cloning goose $tag into vendor/goose"
+    mkdir -p "$ROOT/vendor"
+    git clone -q --depth 1 --branch "$tag" "$UPSTREAM_GIT" "$VENDOR"
+  else
+    say "Checking out goose $tag"
+    git -C "$VENDOR" fetch -q --depth 1 origin "tag" "$tag" --no-tags
+    git -C "$VENDOR" checkout -q --force "$tag"
+  fi
+  say "vendor/goose is at $(vendor_tag) (desktop version $(vendor_version))"
+}
+
+# ---------------------------------------------------------------- apply
+reset_vendor() {
+  # Back to pristine upstream: drop tracked edits and untracked overlay files,
+  # keep ignored build artefacts (node_modules, out/, src/bin/goose, compiled i18n).
+  git -C "$VENDOR" checkout -q --force -- .
+  git -C "$VENDOR" clean -q -fd
+}
+
+apply_patch_set() {
+  local dir="$1" required="$2" p
+  [ -d "$dir" ] || return 0
+  for p in "$dir"/*.patch; do
+    [ -e "$p" ] || continue
+    if git -C "$VENDOR" apply --check "$p" 2>/dev/null; then
+      git -C "$VENDOR" apply "$p"
+      echo "  applied  $(basename "$p")"
+    elif git -C "$VENDOR" apply --3way "$p" 2>/dev/null; then
+      echo "  applied  $(basename "$p") (3-way merge; upstream context moved, consider refreshing)"
+    else
+      # --3way may leave conflict markers behind; put the touched files back.
+      git -C "$VENDOR" apply --numstat "$p" | awk '{print $3}' | while read -r f; do
+        git -C "$VENDOR" checkout -q -- "$f" 2>/dev/null || true
+      done
+      if [ "$required" = yes ]; then
+        die "required patch does not apply: $(basename "$p"). Refresh it against goose $(vendor_tag)."
+      fi
+      warn "optional patch skipped (no longer applies): $(basename "$p")"
+    fi
+  done
+}
+
+cmd_apply() {
+  [ -d "$VENDOR/.git" ] || die "vendor checkout missing; run: l1 sync"
+  say "Resetting vendor/goose to pristine $(vendor_tag)"
+  reset_vendor
+  say "Copying overlay files"
+  cp -R "$ROOT/overlay/." "$VENDOR/"
+  say "Applying brand substitutions"
+  "$NODE_SYS" "$ROOT/scripts/lib/brand-substitute.js" "$BRAND_JSON" "$VENDOR"
+  say "Applying required patches"
+  apply_patch_set "$ROOT/patches/required" yes
+  say "Applying optional patches"
+  apply_patch_set "$ROOT/patches/optional" no
+  say "Branding applied: $(git -C "$VENDOR" status --short | wc -l | tr -d ' ') files differ from upstream"
+}
+
+# ---------------------------------------------------------------- engine
+engine_bin() { echo "$VENDOR/ui/desktop/src/bin/goose"; }
+engine_version() { [ -x "$(engine_bin)" ] && "$(engine_bin)" --version 2>/dev/null | awk '{print $NF}' || echo none; }
+
+cmd_engine() {
+  local mode="${1:-$ENGINE_DEFAULT}" tag ver
+  tag="$(vendor_tag)"; ver="$(vendor_version)"
+  case "$mode" in
+    release)
+      # The engine is the exact binary shipped inside the official Goose desktop
+      # release for this tag, so L1 and Goose.app are byte-identical underneath.
+      local asset file tmp
+      case "$ARCH" in arm64) asset="Goose.zip" ;; x64) asset="Goose_intel_mac.zip" ;; esac
+      file="$CACHE/goose-${tag}-desktop-${ARCH}.zip"
+      mkdir -p "$CACHE"
+      if [ ! -s "$file" ]; then
+        say "Downloading official Goose desktop $tag ($asset) to extract the engine"
+        curl -fL --progress-bar -o "$file.part" "https://github.com/${RELEASE_REPO}/releases/download/${tag}/${asset}" \
+          || die "download failed; is $tag a published release with a $asset asset?"
+        mv "$file.part" "$file"
+      fi
+      tmp="$(mktemp -d)"; ditto -x -k "$file" "$tmp"
+      install -m 755 "$(find "$tmp" -path '*/Contents/Resources/bin/goose' -type f | head -1)" "$(engine_bin)"
+      rm -rf "$tmp"
+      ;;
+    source)
+      use_vendor_tools
+      say "Building goose engine from source (cargo release build; this takes a while)"
+      (cd "$VENDOR" && cargo build --release -p goose-cli --bin goose)
+      install -m 755 "$VENDOR/target/release/goose" "$(engine_bin)"
+      ;;
+    *) die "engine mode must be release or source" ;;
+  esac
+  local got; got="$(engine_version)"
+  [ "$got" = "$ver" ] || die "engine reports $got but desktop is $ver; refusing to mix versions"
+  echo "$mode" > "$CACHE/engine-mode"
+  say "Engine ready: goose $got ($mode)"
+}
+
+# ---------------------------------------------------------------- build
+cmd_build() {
+  use_vendor_tools
+  local ver; ver="$(vendor_version)"
+  [ "$(engine_version)" = "$ver" ] || cmd_engine
+  cd "$VENDOR/ui/desktop"
+  if [ ! -d node_modules ] || [ ../pnpm-lock.yaml -nt node_modules/.modules.yaml ]; then
+    say "Installing desktop dependencies"
+    pnpm install --frozen-lockfile
+  fi
+  say "Typechecking the branded desktop tree"
+  pnpm run build-goose-acp-client >/dev/null
+  pnpm run typecheck
+  say "Packaging ${PRODUCT} ${ver} with electron-forge"
+  rm -rf "$VENDOR/ui/desktop/out" .vite
+  pnpm run package
+  mkdir -p "$OUT"; rm -rf "$OUT/${PRODUCT}-darwin-${ARCH}"
+  mv "$VENDOR/ui/desktop/out/${PRODUCT}-darwin-${ARCH}" "$OUT/"
+  local manifest
+  manifest="$("$NODE_SYS" -e 'console.log(JSON.stringify({product:process.argv[1],upstreamTag:process.argv[2],version:process.argv[3],engine:process.argv[4],engineVersion:process.argv[5],builtAt:new Date().toISOString()}))' \
+    "$PRODUCT" "$(vendor_tag)" "$ver" "$(cat "$CACHE/engine-mode" 2>/dev/null || echo unknown)" "$(engine_version)")"
+  L1_PRODUCT="$PRODUCT" L1_APP="$APP" L1_BUILD_JSON="$manifest" bash "$ROOT/scripts/lib/package-macos.sh"
+  say "Built $APP"
+}
+
+# ---------------------------------------------------------------- verify
+cmd_verify() {
+  [ -d "$APP" ] || die "no build at $APP; run: l1 build"
+  local ok=0 plist="$APP/Contents/Info.plist" v
+  check() { if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; ok=1; fi; }
+  v="$(vendor_version)"
+  check "bundle name is ${PRODUCT}"        "[ \"\$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' '$plist')\" = '$PRODUCT' ]"
+  check "bundle id is ${BUNDLE_ID}"        "[ \"\$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' '$plist')\" = '$BUNDLE_ID' ]"
+  check "url scheme is $(brand .scheme)://" "/usr/libexec/PlistBuddy -c 'Print :CFBundleURLTypes:0:CFBundleURLSchemes:0' '$plist' | grep -qx '$(brand .scheme)'"
+  check "app version is $v"                "[ \"\$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' '$plist')\" = '$v' ]"
+  check "engine binary is $v"              "[ \"\$('$APP/Contents/Resources/bin/goose' --version | awk '{print \$NF}')\" = '$v' ]"
+  check "build manifest present"           "[ -s '$APP/Contents/Resources/l1-build.json' ]"
+  check "code signature valid"             "codesign --verify '$APP' 2>/dev/null"
+  check "english catalogue carries no upstream name" \
+    "! grep -qE '\\bGoose\\b' '$VENDOR/ui/desktop/src/i18n/compiled/en.json'"
+  [ $ok -eq 0 ] && say "Verification passed" || die "verification failed"
+}
+
+# ---------------------------------------------------------------- install / open / status
+cmd_install() {
+  [ -d "$APP" ] || die "no build at $APP; run: l1 build"
+  if pgrep -xq "$PRODUCT"; then
+    say "Quitting running ${PRODUCT}"
+    osascript -e "tell application \"$PRODUCT\" to quit" >/dev/null 2>&1 || pkill -x "$PRODUCT" || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -xq "$PRODUCT" || break; sleep 1; done
+  fi
+  if [ -d "$INSTALLED" ]; then
+    mkdir -p "$CACHE/backups"
+    local bak="$CACHE/backups/${PRODUCT}.app.$(date +%Y%m%d-%H%M%S)"
+    say "Backing up previous install to $bak"
+    mv "$INSTALLED" "$bak"
+    # keep the two most recent backups
+    ls -1dt "$CACHE/backups/${PRODUCT}.app."* 2>/dev/null | tail -n +3 | xargs -I{} rm -rf {}
+  fi
+  say "Installing to $INSTALLED"
+  ditto "$APP" "$INSTALLED"
+  xattr -dr com.apple.quarantine "$INSTALLED" 2>/dev/null || true
+  say "Installed ${PRODUCT} $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INSTALLED/Contents/Info.plist")"
+}
+
+cmd_open() { [ -d "$INSTALLED" ] || die "not installed"; open -a "$INSTALLED"; }
+
+cmd_status() {
+  echo "product:          ${PRODUCT} (${BUNDLE_ID})"
+  if [ -d "$VENDOR/.git" ]; then
+    echo "vendor/goose:     $(vendor_tag)  desktop $(vendor_version)  engine $(engine_version) ($(cat "$CACHE/engine-mode" 2>/dev/null || echo -))"
+    echo "branding applied: $(git -C "$VENDOR" status --short | wc -l | tr -d ' ') files differ from upstream"
+  else
+    echo "vendor/goose:     (not synced)"
+  fi
+  echo "latest upstream:  $(latest_release_tag || echo unknown)"
+  if [ -d "$APP" ]; then
+    echo "last build:       $(cat "$APP/Contents/Resources/l1-build.json" 2>/dev/null || echo "$APP")"
+  fi
+  if [ -d "$INSTALLED" ]; then
+    echo "installed:        $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INSTALLED/Contents/Info.plist")  $(cat "$INSTALLED/Contents/Resources/l1-build.json" 2>/dev/null || echo '(no build manifest: pre-overlay build)')"
+  else
+    echo "installed:        (none)"
+  fi
+}
+
+# ---------------------------------------------------------------- publish
+# Publishes out/<Product>.app as a GitHub release the in-app updater understands:
+# a zip named <Product>.zip (or <Product>_intel_mac.zip) plus latest-mac.yml for
+# electron-updater. The release tag equals the goose tag, which is what the app
+# compares against its own version. The repo must be public for the updater to
+# read it without credentials.
+cmd_publish() {
+  [ -d "$APP" ] || die "no build at $APP; run: l1 build"
+  command -v gh >/dev/null || die "GitHub CLI (gh) is required"
+  gh auth status >/dev/null 2>&1 || die "not signed in to GitHub; run: gh auth login"
+  local owner repo ver tag zipname dist zip yml slug
+  owner="$(brand .updates.owner)"; repo="$(brand .updates.repo)"; slug="$owner/$repo"
+  ver="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+  tag="v$ver"
+  case "$ARCH" in arm64) zipname="${PRODUCT}.zip" ;; x64) zipname="${PRODUCT}_intel_mac.zip" ;; esac
+  dist="$OUT/dist"; rm -rf "$dist"; mkdir -p "$dist"; zip="$dist/$zipname"; yml="$dist/latest-mac.yml"
+  say "Zipping $APP"
+  (cd "$(dirname "$APP")" && ditto -c -k --sequesterRsrc --keepParent "${PRODUCT}.app" "$zip")
+  "$NODE_SYS" - "$zip" "$zipname" "$ver" > "$yml" <<'JS'
+const fs = require('fs'), crypto = require('crypto');
+const [zip, name, version] = process.argv.slice(2);
+const buf = fs.readFileSync(zip);
+const sha512 = crypto.createHash('sha512').update(buf).digest('base64');
+process.stdout.write(`version: ${version}
+files:
+  - url: ${name}
+    sha512: ${sha512}
+    size: ${buf.length}
+path: ${name}
+sha512: ${sha512}
+releaseDate: '${new Date().toISOString()}'
+`);
+JS
+  local notes="${PRODUCT} ${ver}: upstream goose ${tag} with the ${PRODUCT} branding layer. Engine: $(cat "$APP/Contents/Resources/l1-build.json")"
+  if gh release view "$tag" -R "$slug" >/dev/null 2>&1; then
+    say "Release $tag exists on $slug; replacing assets"
+    gh release upload "$tag" "$zip" "$yml" -R "$slug" --clobber
+  else
+    say "Creating release $tag on $slug"
+    gh release create "$tag" "$zip" "$yml" -R "$slug" --title "${PRODUCT} ${ver} (goose ${tag})" --notes "$notes" --latest
+  fi
+  say "Published: https://github.com/$slug/releases/tag/$tag"
+}
+
+# ---------------------------------------------------------------- update
+cmd_update() {
+  local tag="" install=yes engine="$ENGINE_DEFAULT"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-install) install=no ;;
+      --engine) engine="$2"; shift ;;
+      -*) die "unknown option $1" ;;
+      *) tag="$1" ;;
+    esac; shift
+  done
+  cmd_sync "$tag"
+  cmd_apply
+  cmd_engine "$engine"
+  cmd_build
+  cmd_verify
+  [ "$install" = yes ] && cmd_install
+  say "Done: ${PRODUCT} is goose $(vendor_tag) with the L1 branding layer"
+}
+
+cmd="${1:-status}"; shift || true
+case "$cmd" in
+  status|sync|apply|engine|build|verify|install|open|publish|update) "cmd_$cmd" "$@" ;;
+  -h|--help|help) sed -n '2,20p' "$0" ;;
+  *) die "unknown command: $cmd (try: l1 help)" ;;
+esac

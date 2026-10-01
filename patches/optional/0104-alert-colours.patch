@@ -1,0 +1,34 @@
+diff --git a/ui/desktop/src/components/alerts/AlertBox.tsx b/ui/desktop/src/components/alerts/AlertBox.tsx
+index eea78ce..0cb75c5 100644
+--- a/ui/desktop/src/components/alerts/AlertBox.tsx
++++ b/ui/desktop/src/components/alerts/AlertBox.tsx
+@@ -35,8 +35,8 @@ const i18n = defineMessages({
+ });
+ 
+ const alertStyles: Record<AlertType, string> = {
+-  [AlertType.Error]: 'bg-[#d7040e] text-white',
+-  [AlertType.Warning]: 'bg-[#cc4b03] text-white',
++  [AlertType.Error]: 'bg-[#9a3412] text-white',
++  [AlertType.Warning]: 'bg-[#ffde43] text-[#072708]',
+   [AlertType.Info]: 'dark:bg-white dark:text-black bg-black text-white',
+ };
+ 
+diff --git a/ui/desktop/src/components/bottom_menu/BottomMenuAlertPopover.tsx b/ui/desktop/src/components/bottom_menu/BottomMenuAlertPopover.tsx
+index 9e0b3dc..bb0680b 100644
+--- a/ui/desktop/src/components/bottom_menu/BottomMenuAlertPopover.tsx
++++ b/ui/desktop/src/components/bottom_menu/BottomMenuAlertPopover.tsx
+@@ -196,10 +196,10 @@ export default function BottomMenuAlertPopover({ alerts, children }: AlertPopove
+   const hasError = alerts.some((alert) => alert.type === AlertType.Error);
+   const hasInfo = alerts.some((alert) => alert.type === AlertType.Info);
+   const triggerColor = hasError
+-    ? 'text-[#d7040e]' // Red color for error alerts
+-    : hasInfo || alerts.length === 0 // Default to green for context info when no alerts
+-      ? 'text-[#00b300]' // Green color for info alerts
+-      : 'text-[#cc4b03]'; // Orange color for warning alerts
++    ? 'text-text-danger'
++    : hasInfo || alerts.length === 0 // Default to success for context info when no alerts
++      ? 'text-text-success'
++      : 'text-text-warning';
+ 
+   return (
+     <>

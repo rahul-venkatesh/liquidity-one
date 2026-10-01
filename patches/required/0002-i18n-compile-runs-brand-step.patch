@@ -1,0 +1,14 @@
+diff --git a/ui/desktop/scripts/i18n-compile.js b/ui/desktop/scripts/i18n-compile.js
+index a25c346..dc23c15 100644
+--- a/ui/desktop/scripts/i18n-compile.js
++++ b/ui/desktop/scripts/i18n-compile.js
+@@ -25,3 +25,9 @@ for (const file of files) {
+     cwd: projectDir,
+   });
+ }
++
++// L1: brand the compiled catalogues. Upstream message sources stay untouched.
++execFileSync(process.execPath, [path.join(__dirname, 'i18n-brand.js')], {
++  stdio: 'inherit',
++  cwd: projectDir,
++});

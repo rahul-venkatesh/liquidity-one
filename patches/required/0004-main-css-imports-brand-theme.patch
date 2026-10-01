@@ -1,0 +1,12 @@
+diff --git a/ui/desktop/src/styles/main.css b/ui/desktop/src/styles/main.css
+index 0e478cb..3a6812b 100644
+--- a/ui/desktop/src/styles/main.css
++++ b/ui/desktop/src/styles/main.css
+@@ -4,6 +4,7 @@
+ 
+ @import 'tailwindcss';
+ @import 'tw-animate-css';
++@import './brand-theme.css'; /* L1 brand primitives */
+ @plugin '@tailwindcss/typography';
+ 
+ @source '../../index.html';

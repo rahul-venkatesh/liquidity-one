@@ -1,0 +1,24 @@
+diff --git a/ui/desktop/src/i18n/index.ts b/ui/desktop/src/i18n/index.ts
+index 1728a4b..a4c29ce 100644
+--- a/ui/desktop/src/i18n/index.ts
++++ b/ui/desktop/src/i18n/index.ts
+@@ -99,14 +99,13 @@ export const currentMessageLocale = resolvedLocale.messageLocale;
+ 
+ /**
+  * Load compiled messages for a given locale.
+- * Returns an empty object for English (react-intl uses defaultMessage as fallback).
++ *
++ * L1: English loads its compiled catalogue like every other locale instead of
++ * relying on the defaultMessage literals in source, because the branding is
++ * applied to the compiled output (scripts/i18n-brand.js). Missing ids still
++ * fall back to defaultMessage.
+  */
+ export async function loadMessages(locale: string): Promise<Record<string, string>> {
+-  if (locale === 'en') {
+-    // English strings live in source code as defaultMessage — no catalog needed.
+-    return {};
+-  }
+-
+   try {
+     // Dynamic import so compiled translation bundles are code-split.
+     const mod = await import(`./compiled/${locale}.json`);

@@ -1,0 +1,56 @@
+diff --git a/ui/desktop/src/acp/sessions.ts b/ui/desktop/src/acp/sessions.ts
+index 298b35b..d2dfffa 100644
+--- a/ui/desktop/src/acp/sessions.ts
++++ b/ui/desktop/src/acp/sessions.ts
+@@ -8,6 +8,7 @@ import {
+ } from '@agentclientprotocol/sdk';
+ import type { GooseExtension, SessionExportFormat, SessionImportSource } from '@aaif/goose-acp-client';
+ import { getAcpClient } from './acpConnection';
++import { BRAND } from '../brand';
+ import type { ExtensionLoadResult } from '../types/extensions';
+ import type { Session } from '../types/session';
+ import type { Recipe } from '../recipe';
+@@ -204,6 +205,27 @@ export function isAcpSessionLoadInFlight(sessionId: string): boolean {
+   return inFlightSessionLoads.has(sessionId);
+ }
+ 
++/**
++ * L1: the engine is an unmodified goose release, so the product identity is
++ * appended to the system prompt under its own key on every session the desktop
++ * creates or loads. Failure is non-fatal; the session still works as goose.
++ */
++async function applyBrandIdentity(
++  client: Awaited<ReturnType<typeof getAcpClient>>,
++  sessionId: string
++): Promise<void> {
++  try {
++    await client.goose.sessionSystemPromptSet_unstable({
++      sessionId,
++      mode: 'append',
++      key: 'brand-identity',
++      text: BRAND.identity,
++    });
++  } catch (error) {
++    console.warn('[brand] could not apply identity prompt', error);
++  }
++}
++
+ async function loadAcpSession(sessionId: string): Promise<AcpLoadSessionResult> {
+   const client = await getAcpClient();
+   const initialSessionInfoResponse = await client.goose.sessionInfo_unstable({ sessionId });
+@@ -213,6 +235,7 @@ async function loadAcpSession(sessionId: string): Promise<AcpLoadSessionResult>
+     cwd: initialSessionInfo.cwd,
+     mcpServers: [],
+   });
++  await applyBrandIdentity(client, sessionId);
+   // Loading can populate missing provider/model metadata.
+   const sessionInfoResponse = await client.goose.sessionInfo_unstable({ sessionId });
+ 
+@@ -261,6 +284,7 @@ export async function acpNewSession(
+   const request: NewSessionRequest = { cwd, mcpServers: [], _meta: meta };
+   const response = await client.connection.agent.request(methods.agent.session.new, request);
+   const sessionId = String(response.sessionId);
++  await applyBrandIdentity(client, sessionId);
+   const sessionInfoResponse = await client.goose.sessionInfo_unstable({ sessionId });
+ 
+   return {

@@ -1,0 +1,51 @@
+name: Release L1 when goose releases
+
+# Every six hours: if upstream goose has a release tag newer than the latest L1
+# release, build L1 for that tag and publish it. The in-app updater then picks
+# it up. Run manually (optionally with a tag) to force a build.
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: goose release tag (default: latest)
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide which goose tag to build
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG=$(git ls-remote --tags --refs https://github.com/block/goose.git 'refs/tags/v*' \
+              | sed 's#.*/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          fi
+          LATEST=$(gh release view --json tagName -q .tagName 2>/dev/null || echo none)
+          echo "goose tag: $TAG, latest L1 release: $LATEST"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "$TAG" = "$LATEST" ] && [ -z "${{ inputs.tag }}" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; else echo "skip=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Build L1 on goose ${{ steps.tag.outputs.tag }}
+        if: steps.tag.outputs.skip == 'false'
+        run: ./scripts/l1 update "${{ steps.tag.outputs.tag }}" --no-install
+
+      - name: Publish release
+        if: steps.tag.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/l1 publish

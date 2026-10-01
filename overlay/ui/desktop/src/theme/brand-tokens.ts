@@ -1,0 +1,140 @@
+/**
+ * L1 brand overrides for the semantic theme tokens.
+ *
+ * theme-tokens.ts (upstream) spreads these over its own light/dark maps
+ * (patches/required). Only keys listed here change; anything upstream adds in
+ * a future release keeps its upstream value automatically. Values come from
+ * the Liquidity design system: parchment paper, deep greens, gold/yellow accent.
+ */
+
+import type { McpUiStyleVariableKey } from '@modelcontextprotocol/ext-apps/app-bridge';
+
+/** Keys are checked against upstream's token set: a key goose drops fails typecheck here. */
+type TokenOverrides = Partial<Record<McpUiStyleVariableKey, string>>;
+
+const brandFonts: TokenOverrides = {
+  '--font-sans':
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Helvetica, Arial, sans-serif",
+  '--font-mono': 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+};
+
+export const brandLightTokens: TokenOverrides = {
+  ...brandFonts,
+  '--color-background-primary': '#fdf7f0',
+  '--color-background-secondary': '#f6ede2',
+  '--color-background-tertiary': '#e3d8c9',
+  '--color-background-inverse': '#072708',
+  '--color-background-info': '#1e4d6b',
+  '--color-background-danger': '#9a3412',
+  '--color-background-success': '#2d5a3d',
+  '--color-background-warning': '#ffde43',
+  '--color-background-disabled': '#e3d8c9',
+  '--color-text-primary': '#072708',
+  '--color-text-secondary': '#3c5148',
+  '--color-text-tertiary': '#6b7f75',
+  '--color-text-inverse': '#fdf7f0',
+  '--color-text-ghost': '#6b7f75',
+  '--color-text-info': '#1e4d6b',
+  '--color-text-danger': '#9a3412',
+  '--color-text-success': '#2d5a3d',
+  '--color-text-warning': '#c8941a',
+  '--color-text-disabled': '#cdbfad',
+  '--color-border-primary': '#e3d8c9',
+  '--color-border-secondary': '#e3d8c9',
+  '--color-border-tertiary': '#cdbfad',
+  '--color-border-inverse': '#072708',
+  '--color-border-info': '#1e4d6b',
+  '--color-border-danger': '#9a3412',
+  '--color-border-success': '#2d5a3d',
+  '--color-border-warning': '#c8941a',
+  '--color-border-disabled': '#e3d8c9',
+  '--color-ring-primary': '#e3d8c9',
+  '--color-ring-secondary': '#cdbfad',
+  '--color-ring-inverse': '#fdf7f0',
+  '--color-ring-info': '#1e4d6b',
+  '--color-ring-danger': '#9a3412',
+  '--color-ring-success': '#2d5a3d',
+  '--color-ring-warning': '#c8941a',
+  '--shadow-hairline': '0 0 0 1px rgba(18, 32, 26, 0.06)',
+  '--shadow-sm': '0 1px 2px 0 rgba(18, 32, 26, 0.06)',
+  '--shadow-md': '0 4px 6px -1px rgba(18, 32, 26, 0.10), 0 2px 4px -2px rgba(18, 32, 26, 0.10)',
+  '--shadow-lg': '0 10px 15px -3px rgba(18, 32, 26, 0.12), 0 4px 6px -4px rgba(18, 32, 26, 0.10)',
+};
+
+export const brandDarkTokens: TokenOverrides = {
+  ...brandFonts,
+  '--color-background-primary': '#072708',
+  '--color-background-secondary': '#0f3a1d',
+  '--color-background-tertiary': '#184c28',
+  '--color-background-inverse': '#fdf5f0',
+  '--color-background-info': '#9fc8dd',
+  '--color-background-danger': '#f0a882',
+  '--color-background-success': '#a8c4b1',
+  '--color-background-warning': '#ffde43',
+  '--color-background-disabled': '#184c28',
+  '--color-text-primary': '#fdf5f0',
+  '--color-text-secondary': '#9bb8a0',
+  '--color-text-tertiary': '#828e7c',
+  '--color-text-inverse': '#072708',
+  '--color-text-ghost': '#9bb8a0',
+  '--color-text-info': '#9fc8dd',
+  '--color-text-danger': '#f0a882',
+  '--color-text-success': '#a8c4b1',
+  '--color-text-warning': '#ffde43',
+  '--color-text-disabled': '#3d5442',
+  '--color-border-primary': '#0f3a1d',
+  '--color-border-secondary': '#184c28',
+  '--color-border-tertiary': '#184c28',
+  '--color-border-inverse': '#fdf5f0',
+  '--color-border-info': '#9fc8dd',
+  '--color-border-danger': '#f0a882',
+  '--color-border-success': '#a8c4b1',
+  '--color-border-warning': '#ffde43',
+  '--color-border-disabled': '#0f3a1d',
+  '--color-ring-primary': '#184c28',
+  '--color-ring-secondary': '#0f3a1d',
+  '--color-ring-inverse': '#072708',
+  '--color-ring-info': '#9fc8dd',
+  '--color-ring-danger': '#f0a882',
+  '--color-ring-success': '#a8c4b1',
+  '--color-ring-warning': '#ffde43',
+};
+
+/** Aura (upstream's mono dark theme) keeps its fonts; only colours move. */
+export const brandAuraTokens: TokenOverrides = {
+  '--color-background-primary': '#041a06',
+  '--color-background-secondary': '#0a2f12',
+  '--color-background-tertiary': '#123f1e',
+  '--color-background-inverse': '#ffde43',
+  '--color-background-info': '#9fc8dd',
+  '--color-background-danger': '#f0a882',
+  '--color-background-success': '#a8c4b1',
+  '--color-background-warning': '#ffde43',
+  '--color-background-disabled': '#16211b',
+  '--color-text-primary': '#fdf5f0',
+  '--color-text-secondary': '#9bb8a0',
+  '--color-text-tertiary': '#8a9a91',
+  '--color-text-inverse': '#041a06',
+  '--color-text-ghost': '#8a9a91',
+  '--color-text-info': '#9fc8dd',
+  '--color-text-danger': '#f0a882',
+  '--color-text-success': '#a8c4b1',
+  '--color-text-warning': '#ffde43',
+  '--color-text-disabled': '#123f1e',
+  '--color-border-primary': '#0a2f12',
+  '--color-border-secondary': '#123f1e',
+  '--color-border-tertiary': '#123f1e',
+  '--color-border-inverse': '#ffde43',
+  '--color-border-info': '#9fc8dd',
+  '--color-border-danger': '#f0a882',
+  '--color-border-success': '#a8c4b1',
+  '--color-border-warning': '#ffde43',
+  '--color-border-disabled': '#0a2f12',
+  '--color-ring-primary': '#123f1e',
+  '--color-ring-secondary': '#0a2f12',
+  '--color-ring-inverse': '#ffde43',
+  '--color-ring-info': '#9fc8dd',
+  '--color-ring-danger': '#f0a882',
+  '--color-ring-success': '#a8c4b1',
+  '--color-ring-warning': '#ffde43',
+};

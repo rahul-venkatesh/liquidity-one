@@ -1,0 +1,20 @@
+diff --git a/ui/desktop/src/components/Hub.tsx b/ui/desktop/src/components/Hub.tsx
+index c84230c..767d459 100644
+--- a/ui/desktop/src/components/Hub.tsx
++++ b/ui/desktop/src/components/Hub.tsx
+@@ -19,6 +19,7 @@ import { useConfig } from './ConfigContext';
+ import { getEffectiveWorkingDir, getInitialWorkingDir } from '../utils/workingDir';
+ import { createSession } from '../sessions';
+ import LoadingGoose from './LoadingGoose';
++import { LiquidityOneLockup } from './icons/LiquidityLogo';
+ import { UserInput } from '../types/message';
+ import {
+   createNextChatExtensionDraft,
+@@ -220,6 +221,7 @@ export default function Hub({
+   return (
+     <div className="flex flex-col h-full min-h-0 items-center justify-center px-6 relative">
+       <div className="w-full max-w-3xl">
++        <LiquidityOneLockup className="h-5 w-auto text-text-primary mb-8" />
+         <div className="flex items-baseline gap-2 mb-1">
+           <span className="text-6xl font-light text-text-primary tracking-tight tabular-nums">
+             {time}

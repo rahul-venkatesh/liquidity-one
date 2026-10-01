@@ -1,0 +1,41 @@
+/* L1 brand layer, part 1: Tailwind primitives.
+ *
+ * Imported from main.css right after the Tailwind imports (patches/required).
+ * Only redefines @theme variables; the upstream palette stays in main.css, so
+ * goose upgrades never conflict here. Later @theme definitions win, so every
+ * utility that references a primitive picks up the brand value.
+ */
+@theme {
+  /* Brand colours (new) */
+  --color-brand-green: #072708;
+  --color-brand-green-2: #0f3a1d;
+  --color-brand-green-3: #184c28;
+  --color-brand-yellow: #ffde43;
+  --color-brand-yellow-dim: #e0c73c;
+
+  /* Upstream accents re-pointed at the brand */
+  --color-block-teal: #ffde43;
+  --color-block-orange: #c8941a;
+
+  /* Neutral ramp: parchment to deep green */
+  --color-neutral-50: #fdf7f0;
+  --color-neutral-100: #f6ede2;
+  --color-neutral-200: #e3d8c9;
+  --color-neutral-300: #cdbfad;
+  --color-neutral-400: #8a9a91;
+  --color-neutral-500: #6b7f75;
+  --color-neutral-600: #3c5148;
+  --color-neutral-700: #184c28;
+  --color-neutral-800: #0f3a1d;
+  --color-neutral-900: #0f3a1d;
+  --color-neutral-950: #072708;
+
+  --color-red-100: #f0a882;
+  --color-red-200: #9a3412;
+  --color-blue-100: #9fc8dd;
+  --color-blue-200: #1e4d6b;
+  --color-green-100: #a8c4b1;
+  --color-green-200: #184c28;
+  --color-yellow-100: #ffde43;
+  --color-yellow-200: #e0c73c;
+}
